@@ -54,6 +54,18 @@ npm run dev
 
 ---
 
+## 🛠 Tech Stack Details
+- **Frontend**: 
+  - `react`: UI Framework
+  - `tailwindcss` & `@tailwindcss/vite`: Styling engine (v4)
+  - `lucide-react`: Icon library
+- **Backend**: 
+  - `express`: Web server
+  - `axios`: HTTP client for tracing redirects
+  - `cors`: Cross-Origin Resource Sharing middleware
+
+---
+
 ## 📂 Project Structure
 ```text
 dev-suite/
