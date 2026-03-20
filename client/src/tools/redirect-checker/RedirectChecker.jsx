@@ -104,7 +104,6 @@ export default function RedirectChecker() {
         )}
       </header>
 
-      {/* Input Section */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <textarea
           className="w-full h-32 p-4 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm mb-4"
@@ -122,34 +121,43 @@ export default function RedirectChecker() {
         </button>
       </div>
 
-      {/* Results Section */}
       <div className="space-y-4">
         {results.map((res, i) => (
-          <div key={i} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:border-indigo-200 transition-all">
+          <div key={i} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:border-indigo-200 transition-all text-left">
             <button 
               onClick={() => setExpandedIndex(expandedIndex === i ? null : i)}
               className="w-full text-left p-4 hover:bg-slate-50 transition flex items-start gap-4"
             >
-              <div className="mt-1 shrink-0">
+              <div className="mt-1.5 shrink-0">
                 {expandedIndex === i ? <ChevronDown size={20} className="text-slate-400" /> : <ChevronRight size={20} className="text-slate-400" />}
               </div>
 
               <div className="flex flex-col gap-3 min-w-0 flex-1">
-                {/* Master Level Mapping: Requested -> Final */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">In</span>
-                    <span className="font-mono text-slate-500 truncate">{res.requestedUrl}</span>
+                {/* Master Level Mapping: Stacked IN/OUT */}
+                <div className="space-y-2.5">
+                  <div className="flex items-start gap-3">
+                    <div className="flex flex-col items-center shrink-0">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded leading-none">In</span>
+                      <div className="w-px h-3 bg-slate-200 mt-1"></div>
+                    </div>
+                    <span className="font-mono text-sm text-slate-500 break-all leading-relaxed pt-0.5">
+                      {res.requestedUrl}
+                    </span>
                   </div>
-                  <ArrowRight size={14} className="text-slate-300 hidden sm:block shrink-0" />
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 shrink-0">Out</span>
-                    <span className="font-mono text-indigo-600 font-semibold truncate">{res.finalUrl}</span>
+
+                  <div className="flex items-start gap-3">
+                    <div className="flex flex-col items-center shrink-0">
+                      <div className="w-px h-2 bg-slate-200 mb-1"></div>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 leading-none">Out</span>
+                    </div>
+                    <span className="font-mono text-sm text-indigo-600 font-semibold break-all leading-relaxed pt-0.5">
+                      {res.finalUrl}
+                    </span>
                   </div>
                 </div>
 
-                {/* The Full Redirect Path Sequence */}
-                <div className="flex items-center gap-1 flex-wrap">
+                {/* Redirect Path Sequence */}
+                <div className="flex items-center gap-1 flex-wrap pl-9">
                   {res.chain.map((step, idx) => (
                     <React.Fragment key={idx}>
                       <span className={`px-2 py-0.5 rounded border text-[11px] font-bold shadow-sm ${getStatusColor(step.status)}`}>
@@ -179,12 +187,11 @@ export default function RedirectChecker() {
                         </span>
                         <span className="text-sm font-mono text-slate-500 break-all">{step.url}</span>
                       </div>
-                      
                       <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
                         <table className="w-full text-xs text-left">
                           <tbody className="divide-y divide-slate-100">
                             {Object.entries(step.headers || {}).map(([key, val]) => (
-                              <tr key={key} className="hover:bg-slate-50 transition-colors">
+                              <tr key={key} className="hover:bg-slate-50">
                                 <td className="px-4 py-2 font-bold text-slate-400 w-1/3 lowercase border-r border-slate-100 bg-slate-50/30">{key}</td>
                                 <td className="px-4 py-2 text-slate-700 font-mono break-all">{val}</td>
                               </tr>
@@ -192,7 +199,6 @@ export default function RedirectChecker() {
                           </tbody>
                         </table>
                       </div>
-
                       {step.nextUrl && (
                         <div className="flex items-center gap-2 text-[11px] text-indigo-500 font-semibold bg-indigo-50 w-fit px-2 py-0.5 rounded border border-indigo-100">
                           <ArrowRight size={12} />

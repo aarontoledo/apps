@@ -80,7 +80,6 @@ async function handleTraceStream(request, corsHeaders) {
             }
           }
 
-          // MASTER LEVEL DATA: Mapping requestedUrl to finalUrl
           send({ 
             url: originalUrl, 
             result: { 
