@@ -1,6 +1,8 @@
 name = "dev-suite"
 main = "index.js"
-compatibility_date = "2024-03-20"
+compatibility_date = "2026-03-20"
 
-[site]
-bucket = "./client/dist" # Points to your React build folder
+[assets]
+directory = "./client/dist"
+# This tells Cloudflare to serve index.html if a route (like /dashboard) isn't found
+not_found_handling = "single-page-application"
