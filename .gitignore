@@ -29,3 +29,17 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Cloudflare/Wrangler
+.wrangler/
+.dev.vars
+.env
+.env*
+!.env.example
+
+# Local Build Artifacts
+client/dist/
+
+# OS/IDE files
+.DS_Store
+.vscode/

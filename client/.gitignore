@@ -29,3 +29,15 @@ dist-ssr
 !.dev.vars.example
 .env*
 !.env.example
+
+# Build outputs
+dist/
+dist-ssr/
+
+# Local envs
+.env*
+!.env.example
+
+# Wrangler specific
+.wrangler/
+.dev.vars*
