@@ -25,7 +25,9 @@ export default function RedirectChecker() {
     const urlList = urls.split('\n').filter(u => u.trim() !== '');
     
     try {
-      const res = await fetch('http://localhost:3001/api/trace', {
+      // OLD: const res = await fetch('http://localhost:3001/api/trace', ...
+      // NEW: Just use the relative path. Cloudflare handles the rest!
+      const res = await fetch('/api/trace', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ urls: urlList }),
