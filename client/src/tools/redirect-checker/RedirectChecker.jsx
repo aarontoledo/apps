@@ -19,42 +19,44 @@ export default function RedirectChecker() {
     return () => clearInterval(interval);
   }, [loading]);
 
-  const runAnalysis = async () => {
+  const runAnalysis = () => {
+    const urlList = urls.split('\n').filter(u => u.trim() !== '');
+    if (urlList.length === 0) return;
+
     setLoading(true);
     setResults([]);
-    const urlList = urls.split('\n').filter(u => u.trim() !== '');
-    
-    try {
-      // OLD: const res = await fetch('http://localhost:3001/api/trace', ...
-      // NEW: Just use the relative path. Cloudflare handles the rest!
-      // This path works because Cloudflare maps /functions/api/trace.js 
-      // directly to the root of your domain.
-      const res = await fetch('/api/trace', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ urls: urlList }),
-      });
+    setExpandedIndex(null);
 
-      if (!res.ok) {
-        throw new Error(`Server responded with ${res.status}`);
-      }
+    // Encode URLs for the GET query parameter required by the new streaming endpoint
+    const encodedUrls = encodeURIComponent(JSON.stringify(urlList));
+    const eventSource = new EventSource(`http://localhost:3001/api/trace-stream?urls=${encodedUrls}`);
 
-      const data = await res.json();
-      setResults(data);
-    } catch (err) { 
-      console.error("Fetch error:", err);
-      // Helpful for debugging in the browser
-      alert("Analysis failed. Ensure the Cloudflare Function is deployed.");
-    } finally { 
-      setLoading(false); 
-    }
-  }; 
+    // Listen for individual URL results as they arrive
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setResults((prev) => [...prev, data.result]);
+    };
+
+    // Listen for the custom 'end' event sent by your new index.js
+    eventSource.addEventListener('end', () => {
+      eventSource.close();
+      setLoading(false);
+    });
+
+    // Handle connection errors (e.g., server down or SSRF safety trigger)
+    eventSource.onerror = (err) => {
+      console.error("EventSource failed:", err);
+      eventSource.close();
+      setLoading(false);
+      alert("Analysis encountered an error. Check server logs for safety or connection issues.");
+    };
+  };
 
   return (
     <div className="space-y-6">
       <header className="mb-8">
         <h1 className="text-3xl font-extrabold text-slate-900">Redirect Trace</h1>
-        <p className="text-slate-500">Analyze hop-by-hop resolution and HTTP headers.</p>
+        <p className="text-slate-500">Analyze hop-by-hop resolution and HTTP headers in real-time.</p>
       </header>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
@@ -79,7 +81,7 @@ export default function RedirectChecker() {
 
       <div className="space-y-4">
         {results.map((res, i) => (
-          <div key={i} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+          <div key={i} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-2">
             <button 
               onClick={() => setExpandedIndex(expandedIndex === i ? null : i)}
               className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition"
