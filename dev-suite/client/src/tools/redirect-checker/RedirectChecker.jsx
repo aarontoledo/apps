@@ -21,25 +21,34 @@ export default function RedirectChecker() {
 
   const runAnalysis = async () => {
     setLoading(true);
-    setResults([]); // Clear previous results
+    setResults([]);
     const urlList = urls.split('\n').filter(u => u.trim() !== '');
     
     try {
       // OLD: const res = await fetch('http://localhost:3001/api/trace', ...
       // NEW: Just use the relative path. Cloudflare handles the rest!
+      // This path works because Cloudflare maps /functions/api/trace.js 
+      // directly to the root of your domain.
       const res = await fetch('/api/trace', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ urls: urlList }),
       });
+
+      if (!res.ok) {
+        throw new Error(`Server responded with ${res.status}`);
+      }
+
       const data = await res.json();
       setResults(data);
     } catch (err) { 
-      console.error("Fetch error:", err); 
+      console.error("Fetch error:", err);
+      // Helpful for debugging in the browser
+      alert("Analysis failed. Ensure the Cloudflare Function is deployed.");
     } finally { 
       setLoading(false); 
     }
-  };
+  }; 
 
   return (
     <div className="space-y-6">
