@@ -1,13 +1,13 @@
 /**
  * DevSuite Unified Worker
- * Handles Redirect Trace API and serves Static Assets from /client/dist
+ * Handles Redirect Trace API with Manual Hop Following
  */
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // 1. Handle CORS Preflight for the whole Worker
+    // 1. Handle CORS Preflight
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, OPTIONS",
@@ -24,7 +24,6 @@ export default {
     }
 
     // 3. FALLBACK: Serve Static Assets (React App)
-    // This looks into the directory defined in your wrangler.toml [assets] block
     try {
       return await env.ASSETS.fetch(request);
     } catch (e) {
@@ -35,6 +34,7 @@ export default {
 
 /**
  * Logic for the Redirect Trace streaming tool
+ * Manually follows redirects to capture every hop in the chain.
  */
 async function handleTraceStream(request, corsHeaders) {
   const url = new URL(request.url);
@@ -45,31 +45,75 @@ async function handleTraceStream(request, corsHeaders) {
     async start(controller) {
       const send = (data) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
 
-      const traceTask = async (targetUrl) => {
+      const traceTask = async (originalUrl) => {
+        let currentUrl = originalUrl;
+        let chain = [];
+        let redirectCount = 0;
+        const maxRedirects = 15; // Safety cap to prevent infinite loops
+
         try {
-          // Cloudflare fetch has built-in SSRF protection for edge workers
-          const response = await fetch(targetUrl, { 
-            redirect: "manual",
-            headers: { "User-Agent": "DevSuite-Worker/1.1" }
+          while (redirectCount < maxRedirects) {
+            // We use redirect: "manual" so Cloudflare doesn't follow automatically
+            const response = await fetch(currentUrl, { 
+              method: "GET",
+              redirect: "manual", 
+              headers: { 
+                "User-Agent": "DevSuite-Trace/1.2 (Cloudflare Worker)",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+              }
+            });
+
+            const step = {
+              url: currentUrl,
+              status: response.status,
+              headers: Object.fromEntries(response.headers.entries()),
+              nextUrl: response.headers.get("location")
+            };
+
+            chain.push(step);
+
+            // Check if status is a redirect (3xx) AND has a location header
+            if (response.status >= 300 && response.status < 400 && step.nextUrl) {
+              // Construct absolute URL (handles relative redirects like "/home")
+              const nextDestination = new URL(step.nextUrl, currentUrl).href;
+              
+              // Prevent infinite loops if redirected to the same URL
+              if (nextDestination === currentUrl) break;
+              
+              currentUrl = nextDestination;
+              redirectCount++;
+            } else {
+              // Not a redirect, we reached the end (200, 404, 500, etc.)
+              break;
+            }
+          }
+
+          send({ 
+            url: originalUrl, 
+            result: { 
+              finalUrl: currentUrl, 
+              chain: chain, 
+              success: true 
+            } 
           });
-
-          const step = {
-            url: targetUrl,
-            status: response.status,
-            nextUrl: response.headers.get("location"),
-            headers: Object.fromEntries(response.headers.entries())
-          };
-
-          send({ url: targetUrl, result: { finalUrl: targetUrl, chain: [step], success: true } });
         } catch (err) {
-          send({ url: targetUrl, result: { error: err.message, success: false, chain: [] } });
+          // If a specific URL fails (e.g. DNS error), send the error but keep the stream alive
+          send({ 
+            url: originalUrl, 
+            result: { 
+              error: err.message, 
+              success: false, 
+              chain: chain,
+              finalUrl: currentUrl 
+            } 
+          });
         }
       };
 
-      // Process all URLs in parallel
+      // Process all URLs from the request in parallel
       await Promise.all(targetUrls.map(traceTask));
       
-      // Signal the end of the stream to RedirectChecker.jsx
+      // Signal the end of the SSE stream
       controller.enqueue(encoder.encode("event: end\ndata: done\n\n"));
       controller.close();
     },
