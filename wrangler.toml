@@ -2,6 +2,11 @@ name = "apps"
 main = "index.js"
 compatibility_date = "2026-03-20"
 
+# ADD THIS SECTION
+[[routes]]
+pattern = "tools.aarontoledo.com"
+custom_domain = true
+
 [assets]
 directory = "./client/dist"
 # This tells Cloudflare to serve index.html if a route (like /dashboard) isn't found
