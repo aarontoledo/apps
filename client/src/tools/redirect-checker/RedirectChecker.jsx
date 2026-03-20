@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, ArrowRight, Loader2, Trash2, Download } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ChevronDown, ChevronRight, ArrowRight, Loader2, Trash2, Download, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 
 const getStatusColor = (status) => {
   const s = parseInt(status);
@@ -15,6 +15,11 @@ export default function RedirectChecker() {
   const [loading, setLoading] = useState(false);
   const [expandedIndex, setExpandedIndex] = useState(null);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [currentBatch, setCurrentBatch] = useState(0);
+  const [totalBatches, setTotalBatches] = useState(0);
+  
+  // Ref to track cancellation state across the async loop
+  const cancelRef = useRef(false);
 
   useEffect(() => {
     let interval;
@@ -26,34 +31,80 @@ export default function RedirectChecker() {
     return () => clearInterval(interval);
   }, [loading]);
 
-  const runAnalysis = () => {
-    const urlList = urls.split('\n').map(u => u.trim()).filter(u => u !== '');
+  const runAnalysis = async () => {
+    const rawUrls = urls.split('\n').map(u => u.trim()).filter(u => u !== '');
+    const urlList = rawUrls.slice(0, 500);
     if (urlList.length === 0) return;
+
+    const BATCH_SIZE = 25;
+    const batches = [];
+    for (let i = 0; i < urlList.length; i += BATCH_SIZE) {
+      batches.push(urlList.slice(i, i + BATCH_SIZE));
+    }
 
     setLoading(true);
     setResults([]);
     setExpandedIndex(null);
+    setTotalBatches(batches.length);
+    cancelRef.current = false; // Reset cancel flag
 
-    const baseUrl = window.location.hostname === 'localhost' ? 'http://localhost:8787' : '';
-    const encodedUrls = encodeURIComponent(JSON.stringify(urlList));
-    const eventSource = new EventSource(`${baseUrl}/api/trace-stream?urls=${encodedUrls}`);
+    for (let i = 0; i < batches.length; i++) {
+      // Check if user clicked cancel before starting a new batch
+      if (cancelRef.current) break;
 
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.result) setResults((prev) => [...prev, data.result]);
-      } catch (err) { console.error("Parse error:", err); }
-    };
+      setCurrentBatch(i + 1);
+      await processBatch(batches[i]);
 
-    eventSource.addEventListener('end', () => {
-      eventSource.close();
-      setLoading(false);
+      // Check again after batch finishes (and before cool-down)
+      if (cancelRef.current) break;
+
+      if (i < batches.length - 1) {
+        await new Promise(resolve => {
+          const timer = setTimeout(resolve, 2000);
+          // If cancelled during cool-down, we could technically clear the timeout, 
+          // but checking the ref in the loop is sufficient.
+        });
+      }
+    }
+
+    setLoading(false);
+    setCurrentBatch(0);
+  };
+
+  const processBatch = (batchUrls) => {
+    return new Promise((resolve) => {
+      const baseUrl = window.location.hostname === 'localhost' ? 'http://localhost:8787' : '';
+      const encodedUrls = encodeURIComponent(JSON.stringify(batchUrls));
+      const eventSource = new EventSource(`${baseUrl}/api/trace-stream?urls=${encodedUrls}`);
+
+      eventSource.onmessage = (event) => {
+        // If cancelled while the stream is active, close it immediately
+        if (cancelRef.current) {
+          eventSource.close();
+          resolve();
+          return;
+        }
+        try {
+          const data = JSON.parse(event.data);
+          if (data.result) setResults((prev) => [...prev, data.result]);
+        } catch (err) { console.error("Parse error:", err); }
+      };
+
+      eventSource.addEventListener('end', () => {
+        eventSource.close();
+        resolve();
+      });
+
+      eventSource.onerror = () => {
+        eventSource.close();
+        resolve(); 
+      };
     });
+  };
 
-    eventSource.onerror = () => {
-      eventSource.close();
-      setLoading(false);
-    };
+  const handleCancel = () => {
+    cancelRef.current = true;
+    setLoading(false);
   };
 
   const downloadResults = () => {
@@ -73,7 +124,13 @@ export default function RedirectChecker() {
   const clearResults = () => {
     setResults([]);
     setExpandedIndex(null);
+    setCurrentBatch(0);
+    setTotalBatches(0);
   };
+
+  const urlLines = urls.split('\n').filter(u => u.trim());
+  const urlCount = urlLines.length;
+  const isOverLimit = urlCount > 500;
 
   return (
     <div className="space-y-6">
@@ -106,21 +163,84 @@ export default function RedirectChecker() {
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <textarea
-          className="w-full h-32 p-4 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm mb-4"
-          placeholder="Enter URLs (one per line)..."
+          className={`w-full h-48 p-4 rounded-lg border focus:ring-2 outline-none font-mono text-sm mb-3 transition-all ${
+            isOverLimit 
+              ? 'border-red-300 focus:ring-red-500 bg-red-50/30' 
+              : 'border-slate-300 focus:ring-indigo-500'
+          }`}
+          placeholder="Enter up to 500 URLs (one per line)..."
           value={urls}
+          disabled={loading}
           onChange={(e) => setUrls(e.target.value)}
         />
-        <button
-          onClick={runAnalysis}
-          disabled={loading}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-8 py-2.5 rounded-lg font-bold hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-md"
-        >
-          {loading && <Loader2 className="animate-spin" size={20} />}
-          {loading ? `Tracing (${elapsedTime}s)...` : 'Start Analysis'}
-        </button>
-      </div>
+        
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-2">
+            {isOverLimit ? (
+              <div className="flex items-center gap-1.5 text-red-600 animate-pulse">
+                <AlertCircle size={16} />
+                <span className="text-xs font-bold uppercase tracking-wider">
+                  Over Limit: Only first 500 URLs will be processed
+                </span>
+              </div>
+            ) : urlCount > 0 ? (
+              <div className="flex items-center gap-1.5 text-green-600">
+                <CheckCircle2 size={16} />
+                <span className="text-xs font-bold uppercase tracking-wider">
+                  Ready to analyze {urlCount} URLs
+                </span>
+              </div>
+            ) : (
+              <span className="text-xs text-slate-400 font-medium uppercase tracking-wider">
+                Max 500 URLs per session
+              </span>
+            )}
+          </div>
+          <span className={`text-xs font-mono font-bold px-2 py-1 rounded ${
+            isOverLimit ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'
+          }`}>
+            {urlCount} / 500
+          </span>
+        </div>
 
+        <div className="flex items-center gap-3">
+          <button
+            onClick={runAnalysis}
+            disabled={loading || urlCount === 0}
+            className={`flex items-center gap-2 px-8 py-3 rounded-lg font-bold transition-all shadow-md disabled:opacity-50 ${
+              isOverLimit 
+                ? 'bg-amber-600 hover:bg-amber-700 text-white' 
+                : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+            }`}
+          >
+            {loading && <Loader2 className="animate-spin" size={20} />}
+            {loading 
+              ? `Processing Batch ${currentBatch}/${totalBatches}...` 
+              : isOverLimit ? 'Analyze First 500' : 'Start Analysis'}
+          </button>
+
+          {loading && (
+            <button
+              onClick={handleCancel}
+              className="flex items-center gap-2 px-6 py-3 rounded-lg font-bold bg-white text-red-600 border border-red-200 hover:bg-red-50 transition-all shadow-sm"
+            >
+              <XCircle size={18} />
+              Cancel Analysis
+            </button>
+          )}
+        </div>
+      </div>
+      
+      {/* Elapsed time indicator during loading */}
+      {loading && (
+        <div className="flex justify-center">
+          <span className="text-xs font-medium text-slate-400 bg-slate-100 px-3 py-1 rounded-full">
+            Time elapsed: {elapsedTime}s
+          </span>
+        </div>
+      )}
+
+      {/* Results Section Remains Identical */}
       <div className="space-y-4">
         {results.map((res, i) => (
           <div key={i} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:border-indigo-200 transition-all text-left">
@@ -133,7 +253,6 @@ export default function RedirectChecker() {
               </div>
 
               <div className="flex flex-col gap-3 min-w-0 flex-1">
-                {/* Master Level Mapping: Stacked IN/OUT */}
                 <div className="space-y-2.5">
                   <div className="flex items-start gap-3">
                     <div className="flex flex-col items-center shrink-0">
@@ -156,7 +275,6 @@ export default function RedirectChecker() {
                   </div>
                 </div>
 
-                {/* Redirect Path Sequence */}
                 <div className="flex items-center gap-1 flex-wrap pl-9">
                   {res.chain.map((step, idx) => (
                     <React.Fragment key={idx}>

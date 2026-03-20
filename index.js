@@ -1,13 +1,12 @@
 /**
  * DevSuite Unified Worker
- * Handles Redirect Trace API with Manual Hop Following
+ * Optimized with staggered execution to avoid 429 Rate Limits.
  */
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // 1. Handle CORS Preflight
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, OPTIONS",
@@ -18,12 +17,10 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
-    // 2. Route: Redirect Trace API (Streaming)
     if (url.pathname === "/api/trace-stream") {
       return handleTraceStream(request, corsHeaders);
     }
 
-    // 3. FALLBACK: Serve Static Assets (React App)
     try {
       return await env.ASSETS.fetch(request);
     } catch (e) {
@@ -32,9 +29,6 @@ export default {
   },
 };
 
-/**
- * Logic for the Redirect Trace streaming tool
- */
 async function handleTraceStream(request, corsHeaders) {
   const url = new URL(request.url);
   const targetUrls = JSON.parse(decodeURIComponent(url.searchParams.get("urls") || "[]"));
@@ -56,7 +50,7 @@ async function handleTraceStream(request, corsHeaders) {
               method: "GET",
               redirect: "manual", 
               headers: { 
-                "User-Agent": "DevSuite-Trace/1.2 (Cloudflare Worker)",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) DevSuite-Trace/1.2",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
               }
             });
@@ -82,28 +76,33 @@ async function handleTraceStream(request, corsHeaders) {
 
           send({ 
             url: originalUrl, 
-            result: { 
-              requestedUrl: originalUrl, 
-              finalUrl: currentUrl, 
-              chain: chain, 
-              success: true 
-            } 
+            result: { requestedUrl: originalUrl, finalUrl: currentUrl, chain: chain, success: true } 
           });
         } catch (err) {
           send({ 
             url: originalUrl, 
-            result: { 
-              requestedUrl: originalUrl,
-              error: err.message, 
-              success: false, 
-              chain: chain,
-              finalUrl: currentUrl 
-            } 
+            result: { requestedUrl: originalUrl, error: err.message, success: false, chain: chain, finalUrl: currentUrl } 
           });
         }
       };
 
-      await Promise.all(targetUrls.map(traceTask));
+      // Staggered Execution to prevent 429s
+      const CONCURRENCY_LIMIT = 5; 
+      for (let i = 0; i < targetUrls.length; i += CONCURRENCY_LIMIT) {
+        const group = targetUrls.slice(i, i + CONCURRENCY_LIMIT);
+        
+        await Promise.all(group.map(async (targetUrl, index) => {
+          // Stagger each request within the group by 250ms
+          await new Promise(r => setTimeout(r, index * 250));
+          return traceTask(targetUrl);
+        }));
+
+        // Small breather between internal groups
+        if (i + CONCURRENCY_LIMIT < targetUrls.length) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+      
       controller.enqueue(encoder.encode("event: end\ndata: done\n\n"));
       controller.close();
     },
