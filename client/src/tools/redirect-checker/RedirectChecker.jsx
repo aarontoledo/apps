@@ -1,10 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, ArrowRight, Loader2, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, ArrowRight, Loader2, Trash2, Download } from 'lucide-react';
 
-/**
- * Helper to determine Tailwind classes based on status code
- * 2xx: Green, 3xx: Yellow/Amber, 4xx+: Red
- */
 const getStatusColor = (status) => {
   const s = parseInt(status);
   if (s >= 200 && s < 300) return 'bg-green-100 text-green-700 border-green-200';
@@ -40,8 +36,7 @@ export default function RedirectChecker() {
 
     const baseUrl = window.location.hostname === 'localhost' ? 'http://localhost:8787' : '';
     const encodedUrls = encodeURIComponent(JSON.stringify(urlList));
-    const streamUrl = `${baseUrl}/api/trace-stream?urls=${encodedUrls}`;
-    const eventSource = new EventSource(streamUrl);
+    const eventSource = new EventSource(`${baseUrl}/api/trace-stream?urls=${encodedUrls}`);
 
     eventSource.onmessage = (event) => {
       try {
@@ -50,15 +45,29 @@ export default function RedirectChecker() {
       } catch (err) { console.error("Parse error:", err); }
     };
 
-    eventSource.onerror = () => {
-      eventSource.close();
-      setLoading(false);
-    };
-
     eventSource.addEventListener('end', () => {
       eventSource.close();
       setLoading(false);
     });
+
+    eventSource.onerror = () => {
+      eventSource.close();
+      setLoading(false);
+    };
+  };
+
+  const downloadResults = () => {
+    const dataStr = JSON.stringify(results, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    link.href = url;
+    link.download = `devsuite-trace-${timestamp}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const clearResults = () => {
@@ -73,21 +82,32 @@ export default function RedirectChecker() {
           <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Redirect Trace</h1>
           <p className="text-slate-500 text-lg">Analyze hop-by-hop resolution and HTTP headers in real-time.</p>
         </div>
+        
         {results.length > 0 && (
-          <button
-            onClick={clearResults}
-            className="flex items-center gap-2 text-slate-500 hover:text-red-600 font-medium text-sm transition-colors px-3 py-1.5 rounded-lg hover:bg-red-50"
-          >
-            <Trash2 size={16} />
-            Clear Results
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={downloadResults}
+              className="flex items-center gap-2 text-indigo-600 hover:text-indigo-800 font-medium text-sm transition-colors px-3 py-1.5 rounded-lg hover:bg-indigo-50 border border-transparent hover:border-indigo-100"
+            >
+              <Download size={16} />
+              Download JSON
+            </button>
+            <div className="w-px h-4 bg-slate-200 mx-1" />
+            <button
+              onClick={clearResults}
+              className="flex items-center gap-2 text-slate-500 hover:text-red-600 font-medium text-sm transition-colors px-3 py-1.5 rounded-lg hover:bg-red-50"
+            >
+              <Trash2 size={16} />
+              Clear
+            </button>
+          </div>
         )}
       </header>
 
       {/* Input Section */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
         <textarea
-          className="w-full h-32 p-4 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm mb-4 transition-all"
+          className="w-full h-32 p-4 rounded-lg border border-slate-300 focus:ring-2 focus:ring-indigo-500 outline-none font-mono text-sm mb-4"
           placeholder="Enter URLs (one per line)..."
           value={urls}
           onChange={(e) => setUrls(e.target.value)}
@@ -108,17 +128,25 @@ export default function RedirectChecker() {
           <div key={i} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:border-indigo-200 transition-all">
             <button 
               onClick={() => setExpandedIndex(expandedIndex === i ? null : i)}
-              className="w-full text-left p-4 hover:bg-slate-50 transition flex items-center gap-4"
+              className="w-full text-left p-4 hover:bg-slate-50 transition flex items-start gap-4"
             >
-              <div className="shrink-0">
+              <div className="mt-1 shrink-0">
                 {expandedIndex === i ? <ChevronDown size={20} className="text-slate-400" /> : <ChevronRight size={20} className="text-slate-400" />}
               </div>
 
-              <div className="flex flex-col gap-2 min-w-0 flex-1">
-                {/* URL Summary */}
-                <span className="font-mono text-sm text-slate-600 truncate font-medium">
-                  {res.finalUrl || res.url}
-                </span>
+              <div className="flex flex-col gap-3 min-w-0 flex-1">
+                {/* Master Level Mapping: Requested -> Final */}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">In</span>
+                    <span className="font-mono text-slate-500 truncate">{res.requestedUrl}</span>
+                  </div>
+                  <ArrowRight size={14} className="text-slate-300 hidden sm:block shrink-0" />
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400 shrink-0">Out</span>
+                    <span className="font-mono text-indigo-600 font-semibold truncate">{res.finalUrl}</span>
+                  </div>
+                </div>
 
                 {/* The Full Redirect Path Sequence */}
                 <div className="flex items-center gap-1 flex-wrap">
@@ -144,7 +172,6 @@ export default function RedirectChecker() {
                 {res.chain.map((step, si) => (
                   <div key={si} className="relative pl-8 border-l-2 border-indigo-100 pb-6 last:pb-0">
                     <div className="absolute -left-[9px] top-1 w-4 h-4 rounded-full bg-white border-2 border-indigo-500 shadow-sm" />
-                    
                     <div className="flex flex-col gap-3">
                       <div className="flex items-center gap-3">
                         <span className={`text-sm font-bold px-2 py-0.5 rounded border ${getStatusColor(step.status)}`}>
