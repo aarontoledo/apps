@@ -1,5 +1,6 @@
 import RedirectChecker from './redirect-checker/RedirectChecker';
-import { Link2 } from 'lucide-react';
+import FileDiff from './file-diff/FileDiff';
+import { Link2, GitCompare } from 'lucide-react';
 
 export const TOOL_REGISTRY = [
   {
@@ -8,5 +9,12 @@ export const TOOL_REGISTRY = [
     icon: Link2,
     component: RedirectChecker,
     path: '/'
+  },
+  {
+    id: 'file-diff',
+    name: 'File Diff',
+    icon: GitCompare,
+    component: FileDiff,
+    path: '/file-diff'
   }
 ];

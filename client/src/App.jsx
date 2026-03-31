@@ -1,13 +1,14 @@
+import { useState } from 'react';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { TOOL_REGISTRY } from './tools/registry';
 
 function App() {
-  // For now, we just render the first tool. 
-  // Later, you can add React Router here to switch components.
-  const ActiveTool = TOOL_REGISTRY[0].component;
+  const [activeToolId, setActiveToolId] = useState(TOOL_REGISTRY[0].id);
+  const activeTool = TOOL_REGISTRY.find(t => t.id === activeToolId) || TOOL_REGISTRY[0];
+  const ActiveTool = activeTool.component;
 
   return (
-    <DashboardLayout>
+    <DashboardLayout activeToolId={activeToolId} onToolSelect={setActiveToolId}>
       <ActiveTool />
     </DashboardLayout>
   );
